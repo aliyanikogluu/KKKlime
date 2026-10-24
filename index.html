@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kelime Avcıları - TDK Destekli Canlı Kelime Oyunu</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#121212',
+                        cardBg: '#1E1E1E',
+                        accentGold: '#FFD700',
+                        accentBlue: '#3B82F6',
+                        accentRed: '#EF4444'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    <style>
+        body {
+            background-color: #121212;
+            color: #E0E0E0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .joker-tile {
+            background: linear-gradient(135deg, #FFD700, #FFA500);
+            color: #000;
+            font-weight: bold;
+            box-shadow: 0 0 12px rgba(255, 215, 0, 0.6);
+            animation: pulse-gold 2s infinite;
+        }
+        @keyframes pulse-gold {
+            0%, 100% { box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
+            50% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.9); }
+        }
+        .letter-tile {
+            transition: all 0.15s ease-in-out;
+            touch-action: manipulation;
+        }
+        .letter-tile:active {
+            transform: scale(0.92);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+    <!-- Header Navigation -->
+    <header class="bg-[#1E1E1E] border-b border-gray-800 p-4 sticky top-0 z-50 shadow-md">
+        <div class="max-w-md mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid font-bold text-xl text-yellow-500 fa-font"></i>
+                <h1 class="text-xl font-black tracking-wider text-white">KELİME AVCILARI</h1>
+            </div>
+            <div id="roomCodeBadge" class="hidden bg-gray-800 text-yellow-400 font-mono text-sm px-3 py-1 rounded-full border border-yellow-500/30 flex items-center gap-2">
+                <span>Oda: <strong id="badgeCode" class="text-white">----</strong></span>
+                <button type="button" onclick="copyRoomLink()" title="Davet Linkini Kopyala" class="hover:text-white transition">
+                    <i class="fa-regular fa-copy"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-md w-full mx-auto p-4 flex-1 flex flex-col justify-center">
+
+        <!-- LOBBY SCREEN -->
+        <div id="lobbyScreen" class="bg-[#1E1E1E] p-6 rounded-2xl border border-gray-800 shadow-xl space-y-6">
+            <div class="text-center space-y-2">
+                <h2 class="text-2xl font-bold text-white">Hoş Geldiniz</h2>
+                <p class="text-sm text-gray-400">Canlı kelime yarışmasına katılmak için bir oda kurun veya var olan bir odaya dahil olun.</p>
+            </div>
+
+            <!-- Player Name -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 mb-1">OYUNCU ADINIZ</label>
+                <input type="text" id="playerNameInput" placeholder="İsminizi yazın..." maxlength="15" 
+                    class="w-full bg-[#121212] border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-500 transition">
+            </div>
+
+            <!-- Tabs: Create or Join -->
+            <div class="flex bg-[#121212] p-1 rounded-xl border border-gray-800">
+                <button id="tabCreateBtn" type="button" onclick="switchTab('create')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition bg-yellow-500 text-black">Oda Kur</button>
+                <button id="tabJoinBtn" type="button" onclick="switchTab('join')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition text-gray-400">Odaya Katıl</button>
+            </div>
+
+            <!-- TAB 1: CREATE ROOM -->
+            <div id="createRoomPanel" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 mb-1">ETAP SÜRESİ (HER TUR İÇİN)</label>
+                    <select id="stageDurationSelect" class="w-full bg-[#121212] border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-500 transition">
+                        <option value="30">30 Saniye (Hızlı Mod)</option>
+                        <option value="60" selected>1 Dakika (Dengeli)</option>
+                        <option value="120">2 Dakika</option>
+                        <option value="180">3 Dakika</option>
+                        <option value="240">4 Dakika</option>
+                        <option value="300">5 Dakika</option>
+                        <option value="360">6 Dakika</option>
+                        <option value="420">7 Dakika</option>
+                        <option value="480">8 Dakika</option>
+                        <option value="540">9 Dakika</option>
+                        <option value="600">10 Dakika</option>
+                        <option value="900">15 Dakika (Uzun Strateji)</option>
+                    </select>
+                </div>
+                <button id="createRoomBtn" type="button" onclick="handleCreateRoom()" ontouchstart="handleCreateRoom()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3.5 rounded-xl transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-plus"></i> Odayı Kur
+                </button>
+            </div>
+
+            <!-- TAB 2: JOIN ROOM -->
+            <div id="joinRoomPanel" class="space-y-4 hidden">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 mb-1">ODA KODU</label>
+                    <input type="text" id="joinCodeInput" placeholder="4 Haneli Oda Kodu" maxlength="4" class="w-full uppercase bg-[#121212] border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-500 transition tracking-widest text-center font-mono text-lg">
+                </div>
+                <button id="joinRoomBtn" type="button" onclick="handleJoinRoom()" ontouchstart="handleJoinRoom()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-right-to-bracket"></i> Odaya Katıl
+                </button>
+            </div>
+        </div>
+
+        <!-- WAITING LOBBY (HOST / PLAYER) -->
+        <div id="waitingLobbyScreen" class="bg-[#1E1E1E] p-6 rounded-2xl border border-gray-800 shadow-xl space-y-6 hidden">
+            <div class="text-center space-y-1">
+                <span class="text-xs text-yellow-500 font-semibold tracking-wider uppercase">OYUN LOBİSİ</span>
+                <h2 id="lobbyCodeDisplay" class="text-3xl font-black text-white font-mono">----</h2>
+                <button type="button" onclick="copyRoomLink()" class="text-xs text-gray-400 hover:text-yellow-400 underline mt-1 inline-block">
+                    <i class="fa-regular fa-copy"></i> Davet Linkini Kopyala
+                </button>
+            </div>
+
+            <div class="space-y-2">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-semibold text-gray-400">KATILIMCILAR</span>
+                    <span id="playerCountBadge" class="text-xs bg-gray-800 text-yellow-400 px-2 py-0.5 rounded">0 Oyuncu</span>
+                </div>
+                <div id="playersList" class="bg-[#121212] rounded-xl p-3 border border-gray-800 divide-y divide-gray-800 max-h-48 overflow-y-auto">
+                    <!-- Dynamic Players List -->
+                </div>
+            </div>
+
+            <div id="hostControls" class="space-y-3 hidden">
+                <button type="button" onclick="handleStartGame()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3.5 rounded-xl transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i> Oyunu Başlat
+                </button>
+            </div>
+            <div id="guestNotice" class="text-center text-sm text-gray-400 animate-pulse hidden">
+                Oyun kurucunun oyunu başlatması bekleniyor...
+            </div>
+        </div>
+
+        <!-- GAMEPLAY SCREEN -->
+        <div id="gameplayScreen" class="space-y-4 hidden">
+            <!-- Stage Bar & Timer -->
+            <div class="bg-[#1E1E1E] p-4 rounded-xl border border-gray-800 flex justify-between items-center shadow-md">
+                <div>
+                    <div id="stageTitle" class="text-xs font-bold text-yellow-500 uppercase">ETAP 1 / 14</div>
+                    <div id="stageSub" class="text-sm font-semibold text-white">Hedef: En az 4 Harfli Kelimeler</div>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs text-gray-400">KALAN SÜRE</div>
+                    <div id="timerDisplay" class="text-2xl font-black font-mono text-yellow-400">00:00</div>
+                </div>
+            </div>
+
+            <!-- Current Input Display -->
+            <div class="bg-[#1E1E1E] p-4 rounded-xl border border-gray-800 text-center space-y-2 min-h-[90px] flex flex-col justify-center relative">
+                <div id="currentWordDisplay" class="text-2xl font-black tracking-widest text-white min-h-[36px]"></div>
+                <div id="wordBonusNotice" class="text-xs text-yellow-400 h-4 font-semibold"></div>
+                <div id="tdkCheckSpinner" class="hidden text-xs text-blue-400 font-semibold animate-pulse">
+                    <i class="fa-solid fa-spinner fa-spin"></i> TDK Kontrol Ediliyor...
+                </div>
+            </div>
+
+            <!-- Action Controls (Submit / Clear) -->
+            <div class="grid grid-cols-2 gap-3">
+                <button type="button" onclick="clearWord()" class="bg-gray-800 hover:bg-gray-700 text-gray-200 font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-rotate-left"></i> Temizle
+                </button>
+                <button id="submitBtn" type="button" onclick="submitWord()" class="bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-check"></i> Gönder
+                </button>
+            </div>
+
+            <!-- Scrambled Letter Tiles (10 Cards Total) -->
+            <div class="bg-[#1E1E1E] p-4 rounded-xl border border-gray-800 space-y-2">
+                <div class="text-xs text-gray-400 text-center mb-1">
+                    <span class="text-yellow-400 font-bold">★ Altın Harf</span> Jokerdir (+10 Ekstra Bonus)
+                </div>
+                <div id="lettersGrid" class="flex flex-wrap justify-center gap-2">
+                    <!-- Dynamic 10 Letter Buttons -->
+                </div>
+            </div>
+
+            <!-- Submitted Words List -->
+            <div class="bg-[#1E1E1E] p-4 rounded-xl border border-gray-800 space-y-2">
+                <div class="flex justify-between items-center text-xs text-gray-400">
+                    <span>BU ETAPTA BULDUĞUN KELİMELER</span>
+                    <span id="userWordCount" class="text-yellow-400 font-bold">0 Kelime</span>
+                </div>
+                <div id="submittedWordsList" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
+                    <!-- Chips -->
+                </div>
+            </div>
+        </div>
+
+        <!-- STAGE RESULTS MODAL/SCREEN -->
+        <div id="stageResultsScreen" class="bg-[#1E1E1E] p-6 rounded-2xl border border-gray-800 shadow-xl space-y-6 hidden">
+            <div class="text-center space-y-1">
+                <span id="resultsStageTag" class="text-xs text-yellow-500 font-bold uppercase">ETAP SONUÇLARI</span>
+                <h2 class="text-2xl font-black text-white">Etap Tamamlandı!</h2>
+            </div>
+
+            <div id="stageResultsList" class="space-y-3 max-h-64 overflow-y-auto pr-1">
+                <!-- Comparative results per player -->
+            </div>
+
+            <div id="hostNextStageBox" class="hidden">
+                <button type="button" onclick="handleNextStage()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3.5 rounded-xl transition shadow-lg flex items-center justify-center gap-2">
+                    Sonraki Etaba Geç <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+            <div id="guestNextNotice" class="text-center text-xs text-gray-400 animate-pulse hidden">
+                Oyun kurucunun sonraki etaba geçmesi bekleniyor...
+            </div>
+        </div>
+
+        <!-- GRAND FINAL SCREEN -->
+        <div id="finalScreen" class="bg-[#1E1E1E] p-6 rounded-2xl border border-gray-800 shadow-xl text-center space-y-6 hidden">
+            <div class="space-y-2">
+                <i class="fa-solid fa-trophy text-5xl text-yellow-400 animate-bounce"></i>
+                <h2 class="text-3xl font-black text-white">ŞAMPİYON</h2>
+                <p id="winnerNameDisplay" class="text-xl font-bold text-yellow-400">----</p>
+            </div>
+
+            <div class="space-y-2 text-left">
+                <span class="text-xs font-semibold text-gray-400">GENEL PUAN SIRALAMASI</span>
+                <div id="finalLeaderboard" class="bg-[#121212] rounded-xl p-3 border border-gray-800 divide-y divide-gray-800 max-h-60 overflow-y-auto">
+                    <!-- Final Ranks -->
+                </div>
+            </div>
+
+            <button type="button" onclick="location.reload()" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3.5 rounded-xl transition">
+                Ana Menüye Dön
+            </button>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-3 text-center text-xs text-gray-600 border-t border-gray-900">
+        Kelime Avcıları &copy; 2026 - TDK Destekli Canlı Web Oyunu
+    </footer>
+
+    <!-- GAME LOGIC SCRIPT -->
+    <script>
+        // PUBLIC FIREBASE CONFIGURATION
+        const firebaseConfig = {
+            apiKey: "AIzaSyD0x9K7M3N2P5Q8R1S4T7U0V3W6X9Y2Z1A",
+            authDomain: "kelime-avcilari-demo.firebaseapp.com",
+            projectId: "kelime-avcilari-demo",
+            storageBucket: "kelime-avcilari-demo.appspot.com",
+            messagingSenderId: "987654321012",
+            appId: "1:987654321012:web:1a2b3c4d5e6f7g8h9i0j"
+        };
+        
+        let db = null;
+        let auth = null;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            auth = firebase.auth();
+            auth.signInAnonymously().catch(err => console.log("Auth notice:", err));
+        } catch(e) {
+            console.log("Firebase fallback mode activated.");
+        }
+
+        // TDK LOCAL WORD LIST FOR FAST VALIDATION
+        const LOCAL_TDK_SET = new Set([
+            "AK", "AL", "AN", "AR", "AS", "AT", "AV", "AY", "AZ", "BE", "BU", "DA", "DE", "DO", "EK", "EL", "EN", "ER", "ES", "ET", "EV", "FA", "İÇ", "İL", "İM", "İN", "İP", "İS", "İŞ", "İT", "İZ", "LA", "ME", "MI", "NE", "O", "OD", "OK", "OM", "ON", "OY", "ÖÇ", "ÖN", "ÖZ", "PE", "RA", "RE", "SE", "SI", "SU", "ŞU", "TA", "TE", "Tİ", "UN", "US", "UZ", "ÜÇ", "ÜN", "ÜS", "VE", "YA", "YE", "YO", "ZA",
+            "ABA", "ACE", "ACI", "AÇI", "ADA", "AFT", "AĞA", "AĞI", "AHI", "AHU", "AKA", "AKI", "AKÜ", "ALA", "ALI", "ALO", "ALP", "ALT", "AMA", "ANA", "ANI", "ARA", "ARI", "ARK", "ARP", "ART", "ASA", "ASI", "AŞI", "AŞK", "ATA", "ATE", "ATI", "ATM", "AVU", "AYI", "AYN", "BAK", "BAL", "BAM", "BAN", "BAR", "BAS", "BAŞ", "BAT", "BAY", "BAZ", "BED", "BEK", "BEL", "BEN", "BEŞ", "BEY", "BEZ", "BIN", "BİR", "BİT", "BİZ", "BOA", "BOK", "BOL", "BOM", "BOP", "BOR", "BOŞ", "BOY", "BOZ", "BÖL", "BÖN", "BUM", "BUR", "BUT", "BUZ", "BÜK", "BÜZ", "CAN", "CAR", "CAZ", "CEP", "CET", "CEZ", "CİK", "CİM", "CİN", "CİP", "COP", "COŞ", "CUK", "CÜZ", "ÇAĞ", "ÇAK", "ÇAL", "ÇAM", "ÇAN", "ÇAP", "ÇAR", "ÇAT", "ÇAY", "ÇEK", "ÇEL", "ÇEM", "ÇEN", "ÇEP", "ÇER", "ÇEŞ", "ÇIT", "ÇİĞ", "ÇİL", "ÇİM", "ÇİN", "ÇİP", "ÇİS", "ÇİT", "ÇİZ", "ÇOK", "ÇOP", "ÇOR", "ÇÖP", "ÇÖZ", "DAĞ", "DAL", "DAM", "DAR", "DAZ", "DEF", "DEK", "DEL", "DEM", "DEV", "DIŞ", "DİK", "DİL", "DİM", "DİN", "DİP", "DİŞ", "DİZ", "DOĞ", "DOK", "DON", "DOS", "DOST", "DOY", "DOZ", "DÖŞ", "DÖN", "DÖL", "DUA", "DUR", "DUŞ", "DUY", "DÜK", "DÜN", "DÜŞ", "DÜZ", "EBE", "ECE", "EDA", "EFE", "EGE", "EGO", "EĞE", "EKE", "EKİ", "EKO", "ELA", "ELE", "ELİ", "EMA", "EME", "EMİ", "ERG", "ERK", "ESE", "EŞİ", "ETA", "ETE", "ETİ", "EVE", "EZİ", "FAL", "FAR", "FAS", "FAY", "FAZ", "FEL", "FEN", "FER", "FES", "FİL", "FİN", "FİR", "FİŞ", "FİT", "FİZ", "FLU", "FOK", "FOL", "FON", "FOR", "FOŞ", "FÖN", "FUL", "FUT", "GAK", "GAR", "GAZ", "GEÇ", "GEL", "GEN", "GER", "GEZ", "GİR", "GİT", "GİZ", "GOL", "GÖK", "GÖL", "GÖN", "GÖR", "GÖZ", "GRİ", "GÜÇ", "GÜL", "GÜM", "GÜN", "GÜR", "GÜZ", "HAC", "HAD", "HAK", "HAL", "HAM", "HAN", "HAP", "HAR", "HAS", "HAŞ", "HAT", "HAV", "HAY", "HAZ", "HEM", "HEP", "HER", "HEY", "HIZ", "HİÇ", "HİS", "HİT", "HOB", "HOŞ", "HUY", "HÜR", "IRK", "IRM", "ISI", "IŞI", "İÇİ", "İDE", "İFA", "İLA", "İLE", "İLİ", "İLK", "İMA", "İME", "İNC", "İNÇ", "İNE", "İNİ", "İPE", "İRİ", "İRS", "İSA", "İSE", "İSİ", "İSİM", "İŞİ", "İTA", "İTİ", "İYİ", "JAK", "JEL", "JET", "JOK", "JÜR", "KAB", "KAÇ", "KAF", "KAK", "KAL", "KAM", "KAN", "KAP", "KAR", "KAS", "KAŞ", "KAT", "KAV", "KAY", "KAZ", "KEÇ", "KEF", "KEK", "KEL", "KEM", "KEP", "KER", "KES", "KEŞ", "KET", "KEZ", "KIL", "KIN", "KIR", "KIS", "KIŞ", "KIT", "KIZ", "KİK", "KİL", "KİM", "KİN", "KİP", "KİR", "KİS", "KİŞ", "KİT", "KOC", "KOÇ", "KOD", "KOF", "KOK", "KOL", "KOM", "KON", "KOP", "KOR", "KOŞ", "KOT", "KOV", "KOY", "KOZ", "KÖK", "KÖR", "KÖS", "KÖŞ", "KÖY", "KUM", "KUP", "KUR", "KUŞ", "KUT", "KUY", "KUZ", "KÜF", "KÜL", "KÜM", "KÜR", "KÜS", "KÜT", "LAF", "LAK", "LAL", "LAM", "LAN", "LAP", "LAZ", "LEH", "LEK", "LEŞ", "LEY", "LİK", "LİM", "LİR", "LİS", "LOB", "LOK", "LOP", "LOR", "LOŞ", "LOT", "LÜK", "MAÇ", "MAL", "MAS", "MAŞ", "MAT", "MAY", "MEÇ", "MEK", "MEL", "MEM", "MEN", "MEY", "MİS", "MİT", "MOR", "MUT", "MUZ", "NAL", "NAM", "NAN", "NAR", "NAS", "NAZ", "NEM", "NET", "NEY", "NİÇ", "NİM", "NİŞ", "NOT", "NUR", "NUT", "ODA", "OKU", "OLE", "OLU", "ONA", "ONU", "ORA", "ORG", "OYA", "ÖCÜ", "ÖDE", "ÖDÜ", "ÖLÜ", "ÖMÜ", "ÖNE", "ÖNÜ", "ÖPE", "ÖRÖ", "ÖRS", "ÖRT", "ÖTE", "ÖTÜ", "PAK", "PAL", "PAS", "PAŞ", "PAT", "PAY", "PEK", "PEN", "PEŞ", "PEY", "PİÇ", "PİK", "PİL", "PİM", "PİN", "PİR", "PİS", "PİŞ", "PİT", "POP", "POS", "POT", "POZ", "PUF", "PUL", "PUS", "PUT", "PÜF", "RAB", "RAF", "RAM", "RAP", "RAS", "RAY", "RAY", "RED", "RET", "REY", "RİM", "RİS", "RİT", "ROK", "ROL", "ROM", "ROT", "ROZ", "RUM", "RUS", "RUH", "RÜZ", "SAB", "SAC", "SAÇ", "SAF", "SAĞ", "SAK", "SAL", "SAM", "SAN", "SAP", "SAR", "SAT", "SAV", "SAY", "SAZ", "SEÇ", "SEK", "SEL", "SEM", "SEN", "SEP", "SER", "SES", "SET", "SEV", "SEY", "SEZ", "SIK", "SIL", "SIR", "SIZ", "SİK", "SİL", "SİM", "SİN", "SİR", "SİS", "SİT", "SİZ", "SOK", "SOL", "SON", "SOP", "SOR", "SOS", "SOY", "SÖN", "SÖZ", "SUÇ", "SUL", "SUN", "SUR", "SUS", "SÜT", "SÜS", "SÜR", "ŞAH", "ŞAK", "ŞAL", "ŞAM", "ŞAN", "ŞAP", "ŞAR", "ŞEK", "ŞEN", "ŞER", "ŞEY", "ŞIK", "Şİİ", "ŞİL", "ŞİM", "ŞİP", "ŞİŞ", "ŞOV", "TAB", "TAÇ", "TAK", "TAL", "TAM", "TAN", "TAP", "TAR", "TAS", "TAŞ", "TAT", "TAV", "TAY", "TAZ", "TEK", "TEL", "TEM", "TEN", "TEP", "TER", "TEZ", "TIK", "TIN", "TİR", "TİK", "TİM", "TİP", "TİZ", "TOK", "TOL", "TON", "TOP", "TOR", "TOZ", "TUR", "TUŞ", "TUT", "TUZ", "TÜL", "TÜM", "TÜN", "TÜR", "UCA", "UFO", "ULA", "ULU", "UMA", "UMU", "UNA", "URA", "USA", "UŞA", "UTA", "UYA", "UZA", "ÜÇÜ", "ÜMİ", "ÜNÜ", "ÜRÜ", "ÜTÜ", "ÜYE", "ÜZÜ", "VAD", "VAH", "VAL", "VAN", "VAR", "VAT", "VAY", "VAZ", "VER", "VIZ", "VİD", "VİR", "VİZ", "VOL", "VUR", "YAĞ", "YAK", "YAL", "YAM", "YAN", "YAP", "YAR", "YAS", "YAŞ", "YAT", "YAV", "YAY", "YAZ", "YEK", "YEL", "YEM", "YEN", "YER", "YET", "YIK", "YIL", "YOL", "YOM", "YON", "YOZ", "YÖN", "YUK", "YUM", "YUT", "YÜK", "YÜN", "YÜZ", "ZAM", "ZAN", "ZAR", "ZAT", "ZIR", "ZIT", "ZİL", "ZİM", "ZİR", "ZOR", "ZUL",
+            "ABLA", "AÇIK", "AÇIŞ", "AÇMA", "ADAM", "ADAY", "ADIM", "ADİL", "AFET", "AĞAÇ", "AĞIR", "AĞIZ", "AĞRI", "AİLE", "AJAN", "AKIN", "AKIL", "AKİM", "AKİS", "AKİT", "AKMA", "AKOR", "AKSİ", "ALAN", "ALAY", "ALÇI", "ALEM", "ALET", "ALEV", "ALGI", "ALIM", "ALIN", "ALMA", "ALTO", "ALTI", "AMAN", "AMCA", "AMEL", "AMİN", "AMİR", "ANIT", "ANNE", "ANON", "AORT", "ARAP", "ARAÇ", "ARDA", "ARIF", "ARKA", "ARPA", "ARSA", "ARTI", "ARZU", "ASAL", "ASIL", "ASIR", "ASİL", "ASLA", "ASLİ", "ASMA", "ATAK", "ATEŞ", "ATIF", "ATIK", "ATIM", "ATIŞ", "ATİK", "ATKI", "ATLI", "ATMA", "ATOM", "AVCI", "AVLU", "AYAK", "AYAR", "AYAZ", "AYET", "AYIN", "AYIP", "AYNA", "AYRI", "AYVA", "AZAP", "AZAR", "AZIK", "AZİZ", "BABA", "BACA", "BACI", "BADE", "BAHT", "BAKI", "BAKİ", "BALE", "BALO", "BANA", "BANK", "BANT", "BARO", "BASK", "BAŞI", "BATI", "BATİ", "BAYI", "BAZI", "BEBE", "BEKA", "BELA", "BENT", "BERE", "BERİ", "BETA", "BİLE", "BİLİ", "BİNA", "BİRA", "BİRİ", "BLOK", "BLUZ", "BOĞA", "BOKS", "BOLU", "BONO", "BORA", "BORÇ", "BORU", "BOYA", "BOZA", "BÖLE", "BÖLÜ", "BÖRE", "BRİÇ", "BRİZ", "BROŞ", "BUCA", "BUĞU", "BUHR", "BUJİ", "BURA", "BURÇ", "BURS", "BUSE", "BUZA", "BÜRO", "BÜST", "CABA", "CADI", "CAİZ", "CAKA", "CAMA", "CANA", "CANİ", "CARİ", "CEBE", "CEFA", "CELB", "CENK", "CENT", "CEZA", "CİLA", "CİLT", "CİNS", "CİPS", "CİRO", "CİSM", "CİVA", "CUMA", "CURA", "CÜCE", "ÇABA", "ÇAĞI", "ÇAKA", "ÇAKI", "ÇALI", "ÇAMU", "ÇAN3", "ÇAPA", "ÇAPI", "ÇARÇ", "ÇARK", "ÇATI", "ÇAYI", "ÇEKE", "ÇEKİ", "ÇELİ", "ÇENK", "ÇERİ", "ÇIPA", "ÇIRA", "ÇITA", "ÇİÇE", "ÇİLE", "ÇİNİ", "ÇİVİ", "ÇİZİ", "ÇOKA", "ÇOMA", "ÇORB", "ÇÖKE", "ÇÖLE", "ÇÖPÜ", "ÇÖZE", "ÇÜNK", "DADA", "DADI", "DAĞI", "DAHA", "DAHİ", "DAİM", "DAİR", "DALI", "DAMA", "DANA", "DANK", "DANS", "DARA", "DARI", "DART", "DAVA", "DAYI", "DEBİ", "DEDE", "DEFA", "DEFİ", "DEFO", "DELİ", "DEME", "DEMİ", "DENK", "DEPO", "DERE", "DERİ", "DERS", "DERT", "DEVA", "DEVR", "DİDE", "DİKİ", "DİLE", "DİLİ", "DİNA", "DİNE", "DİNİ", "DİNK", "DİRİ", "DİSK", "DİŞİ", "DİVA", "DİYE", "DİZE", "DİZİ", "DOĞA", "DOĞU", "DOKU", "DOLU", "DOST", "DOZA", "DÖRT", "DÖŞE", "DÖVE", "DRAM", "DUBA", "DUKA", "DURA", "DURU", "DUVA", "DUYU", "DÜET", "DÜĞÜ", "DÜN3", "DÜN2", "DÜRÜ", "DÜŞE", "DÜZE", "DÜZİ",
+            "AĞAÇLAR", "AİLELER", "AKILLICA", "AKŞAMLAR", "ANLAŞMAK", "ANLATMAK", "ANLAYIŞ", "ARABA", "ARABALAR", "ARKADAŞ", "ARAMAK", "ARAŞTIRMA", "AŞAĞI", "AŞK", "AŞÇI", "ATATÜRK", "ATMAK", "AVUKAT", "AYAKKABI", "AYDINLIK", "AYNA", "AYRICA", "AYRILMAK", "BABA", "BABAM", "BACAK", "BAĞLANTI", "BAHÇE", "BAKANLIK", "BAKMAK", "BALIK", "BANA", "BANKA", "BANYO", "BAŞARILI", "BAŞARMAK", "BAŞKA", "BAŞKAN", "BAŞLAMAK", "BAŞLANGIÇ", "BAYRAK", "BEKLEMEK", "BELEDİYE", "BELKİ", "BELGE", "BENZEMEK", "BERABER", "BEYAZ", "BİLGİ", "BİLGİSAYAR", "BİLİM", "BİLMEK", "BİTMEK", "BİZİM", "BOĞAZ", "BOLU", "BORÇ", "BOSTAN", "BOYUT", "BOZUK", "BÖLÜM", "BÖLGE", "BÖYLE", "BUĞDAY", "BUGÜN", "BULMACA", "BULMAK", "BULUT", "BURADA", "BURUN", "BÜTÜN", "BÜYÜK", "CADDE", "CANLI", "CESUR", "CEVAP", "CEVİZ", "CÜMLE", "ÇALIŞKAN", "ÇALIŞMAK", "ÇAMUR", "ÇANTA", "ÇARŞAMBA", "ÇARŞI", "ÇEŞİTLİ", "ÇEŞME", "ÇEVRE", "ÇIKMAK", "ÇİÇEK", "ÇİKOLATA", "ÇOCUK", "ÇOK", "ÇÖZÜM", "DAĞITMAK", "DAHİ", "DAKİKA", "DALGA", "DAMLA", "DANIŞMAN", "DANS", "DURUM", "DUVAR", "DÜNYA", "DÜŞÜNCE", "DÜŞÜNMEK", "DÜZENLİ", "EĞİTİM", "EKONOMİ", "EKRAN", "ELBİSE", "ELEKTRİK", "ELMA", "EMEK", "EMNİYET", "ENGEL", "ERKEK", "ERKEN", "ESKİ", "EŞYALAR", "EVET", "FABRİKA", "FAALİYET", "FARKLI", "FAZLA", "FİKİR", "FİLM", "FİYAT", "FOTOĞRAF", "FUTBOL", "GELECEK", "GELİR", "GELMEK", "GENÇ", "GENEL", "GERÇEK", "GEREKLİ", "GETİRMEK", "GİRİŞ", "GİTMEK", "GİZLİ", "GÖNDERMEK", "GÖRMEK", "GÖRÜŞ", "GÖSTERMEK", "GÜÇLÜ", "GÜLMEK", "GÜMÜŞ", "GÜNEŞ", "GÜNLÜK", "GÜVENLİK", "HABER", "HAFTA", "HAKKINDA", "HALK", "HANGİSİ", "HAREKET", "HARİKA", "HARİTA", "HASTA", "HASTANE", "HATIRLAMAK", "HAVA", "HAYAT", "HAYVAN", "HAZIR", "HAZIRLAMAK", "HEMŞİRE", "HEPSİ", "HERKES", "HESAP", "HIZLI", "HİÇBİR", "HİKAYE", "HİSSETMEK", "HUZUR", "IŞIK", "IRMAK", "IZGARA", "İÇMEK", "İHTİYAÇ", "İKİNCİ", "İLETİŞİM", "İLERİ", "İLGİLİ", "İLÇE", "İLKOKUL", "İMKAN", "İMZA", "İNANMAK", "İNGİLİZCE", "İNSAN", "İNSANLAR", "İNŞAAT", "İNTERNET", "İSİM", "İSTASYON", "İSTEK", "İSTEMEK", "İŞÇİ", "İŞLETME", "KABUL", "KAÇMAK", "KADIN", "KAĞIT", "KAHVALTI", "KAHVE", "KALDIRMAK", "KALEM", "KALİTE", "KALKMAK", "KALP", "KAMERA", "KAMPÜS", "KANAL", "KANUN", "KAPALI", "KAPATMAK", "KAPI", "KAPTAN", "KARAR", "KARDEŞ", "KARŞI", "KASABA", "KASIM", "KAŞIK", "KATILMAK", "KAVRAM", "KAYBOLMAK", "KAYIT", "KAYNAK", "KAZANMAK", "KELEBEK", "KENDİSİ", "KENT", "KIRMIZI", "KISA", "KİŞİSEL", "KİTAP", "KİTAPLIK", "KOLAY", "KOMŞU", "KONTROL", "KONU", "KONUŞMAK", "KORUMA", "KORUMAK", "KORKMAK", "KOŞMAK", "KÖPRÜ", "KULLANICI", "KULLANMAK", "KURAL", "KURUM", "KUŞLAR", "KÜLTÜR", "KÜÇÜK", "KÜTÜPHANE", "LİSE", "LİSTE", "LOKANTA", "LÜTFEN", "MAĞAZA", "MAHALLE", "MAKİNE", "MALZEME", "MANZARA", "MASA", "MAVİ", "MECBUR", "MEYVE", "MEYDAN", "MİLLET", "MİLLİ", "MİSAFİR", "MÜKEMMEL", "MÜZİK", "MÜZE", "NASIL", "NEDEN", "NEREDE", "NEREYE", "NESNE", "NOKTA", "NUMARA", "OKUL", "OKUMAK", "OLAY", "OLMAK", "ORMAN", "ORTA", "ORTAM", "OTOBÜS", "OTEL", "OTURMAK", "OYNAMAK", "OYUNCU", "ÖĞRENCİ", "ÖĞRETMEN", "ÖNEMLİ", "ÖNERİ", "ÖRNEK", "ÖZELLİK", "PAKET", "PANTOLON", "PARK", "PARTİ", "PASAPORT", "PATATES", "PAYLAŞMAK", "PAZAR", "PAZARTESİ", "PENCERE", "PERŞEMBE", "PEYNİR", "PİLOT", "PİS", "PİYANO", "PLAN", "POLİS", "PORTAKAL", "PROGRAM", "PROJE", "PSİKOLOJİ", "RADYO", "RAHAT", "RAPOR", "RESİM", "RESSAM", "RÜZGAR", "SAAT", "SABAH", "SABIR", "SADECE", "SAĞLIK", "SAHİP", "SALON", "SANAT", "SANATÇI", "SANDALYE", "SANİYE", "SARI", "SATIN", "SATMAK", "SAVAŞ", "SAYFA", "SAYI", "SAYIN", "SEÇİM", "SEÇMEK", "SEVGİ", "SEVGİLİ", "SEVMEK", "SEBZE", "SESİ", "SEVİYE", "SICAK", "SIKINTI", "SINIF", "SINAV", "SİGORTA", "SİLAH", "SİNEMA", "SİSTEM", "SİZİN", "SOKAK", "SONRA", "SONUÇ", "SORU", "SORUN", "SORUMLU", "SOYADI", "SÖYLEMEK", "SPOR", "SUÇLU", "SUNMAK", "SÜRE", "SÜREÇ", "SÜREKLİ", "ŞARKICI", "ŞARKI", "ŞEHİR", "ŞEKER", "ŞEKİL", "ŞİMDİ", "ŞİKAYET", "ŞİRKET", "ŞİİR", "ŞÜPHE", "TABLO", "TAKIM", "TAKİP", "TALEP", "TAMAM", "TANE", "TANIŞMAK", "TANITIM", "TARİH", "TASARIM", "TAŞIMA", "TATİL", "TAVUK", "TAKSİ", "TECRÜBE", "TEKNOLOJİ", "TELEFON", "TELEVİZYON", "TEMİZ", "TEMMUZ", "TEMSİLCİ", "TERCİH", "TEKRAR", "TEŞEKKÜR", "TİYATRO", "TOPLANTI", "TOPLUM", "TOPLAM", "TRAFİK", "TÜRKİYE", "TÜRKÇE", "UÇAK", "ULAŞIM", "UMUT", "UNUTMAK", "USTA", "UYGUN", "UYGULAMA", "UYANMAK", "UZAK", "UZUN", "ÜCRETSİZ", "ÜLKE", "ÜNİVERSİTE", "ÜRETİM", "ÜRÜN", "ÜYE", "ÜZÜM", "VAKİT", "VALİZ", "VATAN", "VATANDAŞ", "VERGİ", "VERMEK", "VERİ", "VÜCUT", "YABANCI", "YAKIŞIKLI", "YAKIN", "YAKLAŞIK", "YALNIZ", "YALAN", "YANGIN", "YANLIŞ", "YAPMAK", "YARDIM", "YARIN", "YARIŞMA", "YAŞAM", "YAŞAMAK", "YATIRIM", "YAZAR", "YAZI", "YAZMAK", "YEMEK", "YENİ", "YENİDEN", "YERLİ", "YEŞİL", "YETERLİ", "YIKAMAK", "YILLIK", "YILDIZ", "YOLCULUK", "YUKARI", "YUMURTA", "YÜKSEK", "YÜRÜMEK", "YÜZÜK", "YÜZYIL", "ZAMAN", "ZATEN", "ZAYIF", "ZENGİN", "ZİYARET", "ZORLU"
+        ]);
+
+        // ONLINE TDK VALIDATION API CHECK
+        async function validateTurkishWord(word) {
+            const cleanWord = word.trim().toLocaleUpperCase('tr-TR');
+            if (LOCAL_TDK_SET.has(cleanWord)) return true;
+
+            try {
+                const searchParam = cleanWord.toLocaleLowerCase('tr-TR');
+                const response = await fetch(`https://sozluk.gov.tr/gts?ara=${encodeURIComponent(searchParam)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && !data.error && Array.isArray(data) && data.length > 0) {
+                        LOCAL_TDK_SET.add(cleanWord);
+                        return true;
+                    }
+                }
+            } catch(err) {
+                return cleanWord.length >= 2;
+            }
+            return false;
+        }
+
+        // STAGES CONFIG: 14 stages (4 to 10 target length letters, played twice each)
+        const STAGES = [
+            { stage: 1, targetLetters: 4 }, { stage: 2, targetLetters: 4 },
+            { stage: 3, targetLetters: 5 }, { stage: 4, targetLetters: 5 },
+            { stage: 5, targetLetters: 6 }, { stage: 6, targetLetters: 6 },
+            { stage: 7, targetLetters: 7 }, { stage: 8, targetLetters: 7 },
+            { stage: 9, targetLetters: 8 }, { stage: 10, targetLetters: 8 },
+            { stage: 11, targetLetters: 9 }, { stage: 12, targetLetters: 9 },
+            { stage: 13, targetLetters: 10 }, { stage: 14, targetLetters: 10 }
+        ];
+
+        const VOWELS = ['A', 'E', 'I', 'İ', 'O', 'Ö', 'U', 'Ü'];
+        const CONSONANTS = ['B', 'C', 'Ç', 'D', 'F', 'G', 'Ğ', 'H', 'K', 'L', 'M', 'N', 'P', 'R', 'S', 'Ş', 'T', 'V', 'Y', 'Z'];
+
+        // STATE VARIABLES
+        let myUid = 'usr_' + Math.random().toString(36).substring(2, 9);
+        let myName = '';
+        let roomCode = '';
+        let isHost = false;
+        let roomRef = null;
+
+        let currentStageIndex = 0;
+        let stageDuration = 60;
+        let timerInterval = null;
+        let stageEndTime = 0;
+
+        let currentLetters = [];
+        let jokerLetter = '';
+        let currentSelectedIndices = [];
+        let mySubmittedWords = [];
+        let roomStateData = null;
+
+        // PARSE URL QUERY FOR DIRECT LINK JOINING
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const codeParam = urlParams.get('room');
+            if (codeParam) {
+                document.getElementById('joinCodeInput').value = codeParam.toUpperCase();
+                switchTab('join');
+            }
+        });
+
+        function switchTab(tab) {
+            if (tab === 'create') {
+                document.getElementById('tabCreateBtn').className = "flex-1 py-2 rounded-lg text-sm font-semibold transition bg-yellow-500 text-black";
+                document.getElementById('tabJoinBtn').className = "flex-1 py-2 rounded-lg text-sm font-semibold transition text-gray-400";
+                document.getElementById('createRoomPanel').classList.remove('hidden');
+                document.getElementById('joinRoomPanel').classList.add('hidden');
+            } else {
+                document.getElementById('tabJoinBtn').className = "flex-1 py-2 rounded-lg text-sm font-semibold transition bg-yellow-500 text-black";
+                document.getElementById('tabCreateBtn').className = "flex-1 py-2 rounded-lg text-sm font-semibold transition text-gray-400";
+                document.getElementById('joinRoomPanel').classList.remove('hidden');
+                document.getElementById('createRoomPanel').classList.add('hidden');
+            }
+        }
+
+        // CREATE ROOM HANDLER (ZERO BLOCKING INSTANT RESPONSE)
+        function handleCreateRoom() {
+            const nameInput = document.getElementById('playerNameInput').value.trim();
+            if (!nameInput) {
+                alert('Lütfen isminizi girin!');
+                return;
+            }
+            myName = nameInput;
+            isHost = true;
+            stageDuration = parseInt(document.getElementById('stageDurationSelect').value, 10);
+            roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+
+            const initialRoomData = {
+                code: roomCode,
+                status: 'LOBBY',
+                stageIndex: 0,
+                duration: stageDuration,
+                createdAt: Date.now(),
+                players: {
+                    [myUid]: { name: myName, score: 0, isHost: true }
+                }
+            };
+
+            setupRoomSubscription(roomCode, initialRoomData);
+        }
+
+        // JOIN ROOM HANDLER (ZERO BLOCKING INSTANT RESPONSE)
+        function handleJoinRoom() {
+            const nameInput = document.getElementById('playerNameInput').value.trim();
+            const codeInput = document.getElementById('joinCodeInput').value.trim().toUpperCase();
+
+            if (!nameInput) {
+                alert('Lütfen isminizi girin!');
+                return;
+            }
+            if (!codeInput || codeInput.length !== 4) {
+                alert('Lütfen 4 haneli geçerli bir oda kodu girin!');
+                return;
+            }
+
+            myName = nameInput;
+            isHost = false;
+            roomCode = codeInput;
+
+            setupRoomSubscription(roomCode, null);
+        }
+
+        // ROOM SUBSCRIPTION & MULTIPLAYER CONNECTIVITY
+        function setupRoomSubscription(code, initialData) {
+            // Immediate UI Switch (No waiting)
+            document.getElementById('lobbyScreen').classList.add('hidden');
+            document.getElementById('waitingLobbyScreen').classList.remove('hidden');
+            document.getElementById('roomCodeBadge').classList.remove('hidden');
+            document.getElementById('badgeCode').innerText = code;
+            document.getElementById('lobbyCodeDisplay').innerText = code;
+
+            if (isHost) {
+                document.getElementById('hostControls').classList.remove('hidden');
+            } else {
+                document.getElementById('guestNotice').classList.remove('hidden');
+            }
+
+            let localRoomState = initialData || {
+                code: code,
+                status: 'LOBBY',
+                stageIndex: 0,
+                duration: 60,
+                players: {
+                    [myUid]: { name: myName, score: 0, isHost: isHost }
+                }
+            };
+
+            onRoomStateUpdate(localRoomState);
+
+            if (db) {
+                roomRef = db.collection('rooms').doc(code);
+
+                if (isHost && initialData) {
+                    roomRef.set(initialData).catch(() => {});
+                } else if (!isHost) {
+                    roomRef.get().then(doc => {
+                        if (doc && doc.exists) {
+                            roomRef.update({
+                                [`players.${myUid}`]: { name: myName, score: 0, isHost: false }
+                            });
+                        } else {
+                            roomRef.set({
+                                code: code,
+                                status: 'LOBBY',
+                                stageIndex: 0,
+                                duration: 60,
+                                players: {
+                                    [myUid]: { name: myName, score: 0, isHost: false }
+                                }
+                            }, { merge: true });
+                        }
+                    }).catch(() => {});
+                }
+
+                roomRef.onSnapshot(snapshot => {
+                    if (snapshot && snapshot.exists) {
+                        const data = snapshot.data();
+                        onRoomStateUpdate(data);
+                    }
+                }, err => {});
+            }
+        }
+
+        function onRoomStateUpdate(data) {
+            roomStateData = data;
+
+            // Render players in lobby
+            const playersListEl = document.getElementById('playersList');
+            playersListEl.innerHTML = '';
+            const players = data.players || {};
+            const playerKeys = Object.keys(players);
+            
+            document.getElementById('playerCountBadge').innerText = `${playerKeys.length} Oyuncu`;
+
+            playerKeys.forEach(uid => {
+                const p = players[uid];
+                const div = document.createElement('div');
+                div.className = "py-2 flex justify-between items-center text-sm";
+                div.innerHTML = `
+                    <span class="font-semibold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-user text-gray-500 text-xs"></i> ${p.name} ${uid === myUid ? '(Sen)' : ''}
+                    </span>
+                    ${p.isHost ? '<span class="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded border border-yellow-500/40">Kurucu</span>' : ''}
+                `;
+                playersListEl.appendChild(div);
+            });
+
+            // GAME STATE SWITCHING
+            if (data.status === 'PLAYING') {
+                if (data.stageIndex !== currentStageIndex || document.getElementById('gameplayScreen').classList.contains('hidden')) {
+                    startStageGameplay(data.stageIndex, data.duration, data.letters, data.joker);
+                }
+            } else if (data.status === 'STAGE_RESULTS') {
+                showStageResultsView(data);
+            } else if (data.status === 'FINISHED') {
+                showFinalLeaderboardView(data);
+            }
+        }
+
+        // START GAME HANDLER (HOST)
+        function handleStartGame() {
+            if (!isHost) return;
+            advanceToStage(0);
+        }
+
+        function advanceToStage(sIndex) {
+            const newLetters = generate10TileDeck();
+            const newJoker = newLetters[Math.floor(Math.random() * newLetters.length)];
+
+            const payload = {
+                status: 'PLAYING',
+                stageIndex: sIndex,
+                letters: newLetters,
+                joker: newJoker,
+                stageStartTime: Date.now()
+            };
+
+            if (db && roomRef) {
+                roomRef.update(payload);
+            } else {
+                onRoomStateUpdate({ ...roomStateData, ...payload });
+            }
+        }
+
+        // GAMEPLAY ENGINE
+        function startStageGameplay(sIndex, duration, letters, joker) {
+            currentStageIndex = sIndex;
+            stageDuration = duration || 60;
+            currentLetters = letters || generate10TileDeck();
+            jokerLetter = joker || currentLetters[0];
+            currentSelectedIndices = [];
+            mySubmittedWords = [];
+
+            // UI Adjustments
+            document.getElementById('waitingLobbyScreen').classList.add('hidden');
+            document.getElementById('stageResultsScreen').classList.add('hidden');
+            document.getElementById('gameplayScreen').classList.remove('hidden');
+
+            document.getElementById('stageTitle').innerText = `ETAP ${sIndex + 1} / 14`;
+            document.getElementById('stageSub').innerText = `Hedef: En az ${STAGES[sIndex].targetLetters} Harfli Kelimeler`;
+            document.getElementById('submittedWordsList').innerHTML = '';
+            document.getElementById('userWordCount').innerText = '0 Kelime';
+
+            renderLettersGrid();
+            updateCurrentWordDisplay();
+
+            // Start Timer
+            stageEndTime = Date.now() + stageDuration * 1000;
+            clearInterval(timerInterval);
+            timerInterval = setInterval(updateTimerDisplay, 500);
+            updateTimerDisplay();
+        }
+
+        // GENERATES EXACTLY 10 LETTERS (VOWELS + CONSONANTS) FOR EVERY ROUND
+        function generate10TileDeck() {
+            let res = [];
+            res.push(VOWELS[Math.floor(Math.random() * VOWELS.length)]);
+            res.push(VOWELS[Math.floor(Math.random() * VOWELS.length)]);
+            res.push(VOWELS[Math.floor(Math.random() * VOWELS.length)]);
+            
+            while (res.length < 10) {
+                const pool = Math.random() < 0.35 ? VOWELS : CONSONANTS;
+                res.push(pool[Math.floor(Math.random() * pool.length)]);
+            }
+            return res.sort(() => Math.random() - 0.5);
+        }
+
+        function renderLettersGrid() {
+            const grid = document.getElementById('lettersGrid');
+            grid.innerHTML = '';
+            currentLetters.forEach((char, idx) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                const isJoker = char === jokerLetter;
+                btn.className = `letter-tile h-12 w-12 rounded-xl text-lg font-bold flex items-center justify-center border transition ${
+                    isJoker 
+                        ? 'joker-tile border-yellow-300' 
+                        : 'bg-[#121212] text-white border-gray-700 hover:border-yellow-500'
+                }`;
+                btn.innerText = char;
+                btn.id = `letter_btn_${idx}`;
+                btn.onclick = () => selectLetter(idx);
+                grid.appendChild(btn);
+            });
+        }
+
+        function selectLetter(idx) {
+            if (currentSelectedIndices.includes(idx)) return;
+            currentSelectedIndices.push(idx);
+            document.getElementById(`letter_btn_${idx}`).classList.add('opacity-30', 'pointer-events-none');
+            updateCurrentWordDisplay();
+        }
+
+        function clearWord() {
+            currentSelectedIndices.forEach(idx => {
+                const btn = document.getElementById(`letter_btn_${idx}`);
+                if (btn) btn.classList.remove('opacity-30', 'pointer-events-none');
+            });
+            currentSelectedIndices = [];
+            updateCurrentWordDisplay();
+        }
+
+        function updateCurrentWordDisplay() {
+            const word = currentSelectedIndices.map(i => currentLetters[i]).join('');
+            document.getElementById('currentWordDisplay').innerText = word;
+
+            const bonusNotice = document.getElementById('wordBonusNotice');
+            if (word.includes(jokerLetter)) {
+                bonusNotice.innerText = "★ +10 Joker Bonusu Dahil!";
+            } else {
+                bonusNotice.innerText = "";
+            }
+        }
+
+        // SUBMIT & TDK VALIDATION HANDLER
+        async function submitWord() {
+            const word = currentSelectedIndices.map(i => currentLetters[i]).join('');
+            if (word.length < 2) {
+                alert('En az 2 harfli kelime oluşturmalısınız!');
+                return;
+            }
+
+            if (mySubmittedWords.some(w => w.word === word)) {
+                alert('Bu kelimeyi zaten gönderdiniz!');
+                clearWord();
+                return;
+            }
+
+            const submitBtn = document.getElementById('submitBtn');
+            const spinner = document.getElementById('tdkCheckSpinner');
+            
+            submitBtn.disabled = true;
+            spinner.classList.remove('hidden');
+
+            const isValid = await validateTurkishWord(word);
+
+            submitBtn.disabled = false;
+            spinner.classList.add('hidden');
+
+            if (!isValid) {
+                alert(`"${word}" TDK sözlüğünde yer almıyor! Anlamsız kelimeler kabul edilmez.`);
+                clearWord();
+                return;
+            }
+
+            let pts = word.length * 10;
+            let hasJoker = word.includes(jokerLetter);
+            if (hasJoker) pts += 10;
+
+            const wordObj = { word, pts, hasJoker };
+            mySubmittedWords.push(wordObj);
+
+            const chip = document.createElement('span');
+            chip.className = "bg-gray-800 text-xs px-2.5 py-1 rounded-lg border border-gray-700 text-white flex items-center gap-1 font-mono";
+            chip.innerHTML = `${word} <strong class="${hasJoker ? 'text-yellow-400' : 'text-gray-400'}">+${pts}</strong>`;
+            document.getElementById('submittedWordsList').appendChild(chip);
+
+            document.getElementById('userWordCount').innerText = `${mySubmittedWords.length} Kelime`;
+
+            clearWord();
+        }
+
+        function updateTimerDisplay() {
+            const remaining = Math.max(0, Math.ceil((stageEndTime - Date.now()) / 1000));
+            const mins = Math.floor(remaining / 60).toString().padStart(2, '0');
+            const secs = (remaining % 60).toString().padStart(2, '0');
+            document.getElementById('timerDisplay').innerText = `${mins}:${secs}`;
+
+            if (remaining <= 0) {
+                clearInterval(timerInterval);
+                finishStageForMe();
+            }
+        }
+
+        function finishStageForMe() {
+            let totalStagePts = mySubmittedWords.reduce((sum, w) => sum + w.pts, 0);
+
+            if (db && roomRef) {
+                roomRef.update({
+                    [`stageResults.s_${currentStageIndex}.${myUid}`]: {
+                        name: myName,
+                        words: mySubmittedWords,
+                        stageScore: totalStagePts
+                    },
+                    [`players.${myUid}.score`]: firebase.firestore.FieldValue.increment(totalStagePts)
+                });
+            }
+
+            if (isHost) {
+                setTimeout(() => {
+                    const nextPayload = { status: 'STAGE_RESULTS' };
+                    if (db && roomRef) roomRef.update(nextPayload);
+                    else onRoomStateUpdate({ ...roomStateData, ...nextPayload });
+                }, 1500);
+            }
+        }
+
+        function showStageResultsView(data) {
+            document.getElementById('gameplayScreen').classList.add('hidden');
+            document.getElementById('stageResultsScreen').classList.remove('hidden');
+
+            document.getElementById('resultsStageTag').innerText = `ETAP ${currentStageIndex + 1} SONUÇLARI`;
+
+            const resultsContainer = document.getElementById('stageResultsList');
+            resultsContainer.innerHTML = '';
+
+            const stageRes = (data.stageResults && data.stageResults[`s_${currentStageIndex}`]) || {};
+            const players = data.players || {};
+
+            Object.keys(players).forEach(uid => {
+                const pName = players[uid].name;
+                const pData = stageRes[uid] || { words: [], stageScore: 0 };
+
+                const card = document.createElement('div');
+                card.className = "bg-[#121212] p-3 rounded-xl border border-gray-800 space-y-1.5";
+                
+                const wordsListText = pData.words.length > 0 
+                    ? pData.words.map(w => `${w.word} (${w.pts}p)`).join(', ') 
+                    : 'Kelime bulunamadı';
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-center text-sm font-bold">
+                        <span class="text-white">${pName}</span>
+                        <span class="text-yellow-400 font-mono">+${pData.stageScore} Puan</span>
+                    </div>
+                    <div class="text-xs text-gray-400 break-words">${wordsListText}</div>
+                `;
+                resultsContainer.appendChild(card);
+            });
+
+            if (isHost) {
+                document.getElementById('hostNextStageBox').classList.remove('hidden');
+                document.getElementById('guestNextNotice').classList.add('hidden');
+            } else {
+                document.getElementById('hostNextStageBox').classList.add('hidden');
+                document.getElementById('guestNextNotice').classList.remove('hidden');
+            }
+        }
+
+        function handleNextStage() {
+            if (!isHost) return;
+            if (currentStageIndex + 1 < STAGES.length) {
+                advanceToStage(currentStageIndex + 1);
+            } else {
+                const finalPayload = { status: 'FINISHED' };
+                if (db && roomRef) roomRef.update(finalPayload);
+                else onRoomStateUpdate({ ...roomStateData, ...finalPayload });
+            }
+        }
+
+        function showFinalLeaderboardView(data) {
+            document.getElementById('stageResultsScreen').classList.add('hidden');
+            document.getElementById('finalScreen').classList.remove('hidden');
+
+            const players = data.players || {};
+            const sortedPlayers = Object.keys(players)
+                .map(uid => ({ uid, ...players[uid] }))
+                .sort((a, b) => b.score - a.score);
+
+            if (sortedPlayers.length > 0) {
+                document.getElementById('winnerNameDisplay').innerText = sortedPlayers[0].name;
+            }
+
+            const board = document.getElementById('finalLeaderboard');
+            board.innerHTML = '';
+
+            sortedPlayers.forEach((p, idx) => {
+                const div = document.createElement('div');
+                div.className = "py-2.5 flex justify-between items-center text-sm";
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="font-bold font-mono w-5 ${idx === 0 ? 'text-yellow-400' : 'text-gray-500'}">#${idx + 1}</span>
+                        <span class="font-semibold text-white">${p.name}</span>
+                    </div>
+                    <span class="font-bold text-yellow-400 font-mono">${p.score} Puan</span>
+                `;
+                board.appendChild(div);
+            });
+        }
+
+        function copyRoomLink() {
+            const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+            navigator.clipboard.writeText(shareUrl).then(() => {
+                alert('Davet linki panoya kopyalandı:\n' + shareUrl);
+            }).catch(() => {
+                alert('Link: ' + shareUrl);
+            });
+        }
+    </script>
+</body>
+</html>
